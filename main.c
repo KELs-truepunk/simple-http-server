@@ -10,7 +10,19 @@
 #include <signal.h>
 
 typedef struct addrinfo addrinfo;
-
+int send_file(int socketfd, FILE* file) {
+        char* buffer = malloc(4096 * sizeof(char));
+        if (buffer == NULL) {
+                perror("malloc");
+                return -1;
+        }
+        size_t bytes_read;
+        while ((bytes_read = fread(buffer, 1, 4096, file)) > 0) {
+                send(socketfd, buffer, bytes_read, 0);
+        }
+        free(buffer);
+        return 0;
+}
 // Очистка зомби-процессов
 void sigchld_handler(int s) {
         while(waitpid(-1, NULL, WNOHANG) > 0);
@@ -41,6 +53,7 @@ int main(void){
 
         int status = getaddrinfo(NULL, "8080", &hints, &res); //res - основа
         if (status != 0) {
+                freeaddrinfo(res);
                 return status;
         }
 
@@ -90,31 +103,70 @@ int main(void){
                 if (pid == 0) {
                         //дочерний процесс обработки подключений
                         close(sockfd);
-
-                        FILE* index = fopen("index.html", "rb"); //открываем файл с html
-                        if (index == NULL) {
-                                perror("fopen"); //если не получилось открыть выходим
+                        char* request = (char*)malloc(4096 * sizeof(char));
+                        if (request == NULL) {
+                                perror("malloc");
+                                free(request);
                                 return -1;
                         }
-                        const size_t fsize = file_size(index);
-
-                        char header[256] = {0};
-                        memset(header, 0, sizeof(header));
-                        sprintf(header,
-                                         "HTTP/1.1 200 OK\r\n"
-                                        "Content-Type: text/html; charset=utf-8\r\n"
-                                        "Content-Length: %ld\r\n"
-                                        "Connection: close\r\n"
-                                        "\r\n", fsize);
-                        send(newsockfd, header,  strlen(header), 0);
-
-                        char buffer[1024];
-                        size_t bytes_read;
-                        while ((bytes_read = fread(buffer, 1, strlen(buffer), index)) > 0) {
-                                send(newsockfd, buffer, bytes_read, 0);
+                        int bytes = recv(newsockfd, request, 4096 - 1, 0);
+                        if (bytes <= 0) {
+                                perror("recv");
+                                free(request);
+                                close(newsockfd);
+                                return -1;
                         }
+                        request[bytes] = '\0';
+                        char* first_line = strtok(request, "\r\n");
+                        if (!first_line) {
+                                free(request);
+                                close(newsockfd);
+                                return -1;
+                        }
+                        char method[16], path[256];
+                        if (sscanf(first_line, "%s %s", method, path) != 2) {
+                                free(request);
+                                close(newsockfd);
+                                return -1;
+                        }
+                        if (strcmp("GET", method) == 0) {
+                                const char* file_path = path;
+                                if (file_path[0] == '/') {
+                                        file_path++;
+                                }
+                                if (strlen(file_path) == 0 || file_path[0] == '\0') {
+                                        strcat(file_path, "index.html");
+                                }
+                                FILE* file = fopen(file_path, "rb"); //открываем файл с html
+                                if (file == NULL) {
+                                        perror("fopen"); //если не получилось открыть выходим
+                                        fclose(file);
+                                        return -1;
+                                }
+                                const size_t fsize = file_size(file);
 
-                        fclose(index); //закрываем файл
+                                char header[256] = {0};
+                                memset(header, 0, sizeof(header));
+                                sprintf(header,
+                                                 "HTTP/1.1 200 OK\r\n"
+                                                "Content-Type: text/html; charset=utf-8\r\n"
+                                                "Content-Length: %ld\r\n"
+                                                "Connection: close\r\n"
+                                                "\r\n", fsize);
+                                send(newsockfd, header,  strlen(header), 0);
+
+                                if (send_file(newsockfd, file) == 0) {
+                                        printf("File %s successfully sent\n", file_path);
+                                }else {
+                                        perror("send_file");
+                                        close(newsockfd);
+                                        free(request);
+                                        fclose(file);
+                                        return -1;
+                                }
+                                fclose(file); //закрываем файл
+                        }
+                        free(request);
                         shutdown(newsockfd, 2); //закрываем и запрещаем нам стучаться(2)
                         close(newsockfd);//закрываем новое подключение
                         exit(0);
