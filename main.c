@@ -10,6 +10,36 @@
 #include <signal.h>
 
 typedef struct addrinfo addrinfo;
+const char* get_mime_type(const char* ext) {
+        if (strcmp(ext, ".html") == 0) return "text/html";
+        if (strcmp(ext, ".js") == 0)   return "application/javascript";
+        if (strcmp(ext, ".css") == 0)  return "text/css";
+        if (strcmp(ext, ".jpg") == 0)  return "image/jpeg";
+        if (strcmp(ext, ".png") == 0)  return "image/png";
+        return "application/octet-stream"; // Тип по умолчанию для бинарных файлов
+}
+
+FILE* page_open(const char* file_path) {
+        FILE* file = fopen(file_path, "rb");
+        if (file == NULL) {
+                //если не получилось открыть то 404
+                file = fopen("404.html", "rb");
+                puts("404 page sent");
+                if (file == NULL) {
+                        perror("fopen");
+                        fclose(file);
+                        return NULL;
+                }
+        }
+        return file;
+}
+char* get_extension(const char* file_path) {
+        char* extension = strrchr(file_path, '.');
+        if (extension == NULL) {
+                extension = strrchr(file_path, '\0');
+        }
+        return extension;
+}
 int send_file(int socketfd, FILE* file) {
         char* buffer = malloc(4096 * sizeof(char));
         if (buffer == NULL) {
@@ -109,7 +139,7 @@ int main(void){
                                 free(request);
                                 return -1;
                         }
-                        int bytes = recv(newsockfd, request, 4096 - 1, 0);
+                        int bytes = (int)recv(newsockfd, request, 4096 - 1, 0);
                         if (bytes <= 0) {
                                 perror("recv");
                                 free(request);
@@ -129,6 +159,8 @@ int main(void){
                                 close(newsockfd);
                                 return -1;
                         }
+                        char* ext = get_extension(path);
+                        //если пришео GET запрос то возращаем страницу
                         if (strcmp("GET", method) == 0) {
                                 const char* file_path = path;
                                 if (file_path[0] == '/') {
@@ -137,26 +169,30 @@ int main(void){
                                 if (strlen(file_path) == 0 || file_path[0] == '\0') {
                                         strcat(file_path, "index.html");
                                 }
-                                FILE* file = fopen(file_path, "rb"); //открываем файл с html
+
+                                FILE* file = page_open(file_path);
                                 if (file == NULL) {
-                                        perror("fopen"); //если не получилось открыть выходим
-                                        fclose(file);
+                                        perror("page_open");
+                                        free(request);
+                                        close(newsockfd);
                                         return -1;
                                 }
+
                                 const size_t fsize = file_size(file);
 
                                 char header[256] = {0};
                                 memset(header, 0, sizeof(header));
+                                const char* mime = get_mime_type(ext);
                                 sprintf(header,
-                                                 "HTTP/1.1 200 OK\r\n"
-                                                "Content-Type: text/html; charset=utf-8\r\n"
-                                                "Content-Length: %ld\r\n"
-                                                "Connection: close\r\n"
-                                                "\r\n", fsize);
+                                        "HTTP/1.1 200 OK\r\n"
+                                        "Content-Type: %s; charset=utf-8\r\n"
+                                        "Content-Length: %ld\r\n"
+                                        "Connection: close\r\n"
+                                        "\r\n", mime, fsize);
                                 send(newsockfd, header,  strlen(header), 0);
 
                                 if (send_file(newsockfd, file) == 0) {
-                                        printf("File %s successfully sent\n", file_path);
+                                        printf("page successfully sent\n");
                                 }else {
                                         perror("send_file");
                                         close(newsockfd);
