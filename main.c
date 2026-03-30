@@ -20,18 +20,7 @@ const char* get_mime_type(const char* ext) {
 }
 
 FILE* page_open(const char* file_path) {
-        FILE* file = fopen(file_path, "rb");
-        if (file == NULL) {
-                //если не получилось открыть то 404
-                file = fopen("404.html", "rb");
-                puts("404 page sent");
-                if (file == NULL) {
-                        perror("fopen");
-                        fclose(file);
-                        return NULL;
-                }
-        }
-        return file;
+        return fopen(file_path, "rb");
 }
 char* get_extension(const char* file_path) {
         char* extension = strrchr(file_path, '.');
@@ -159,7 +148,6 @@ int main(void){
                                 close(newsockfd);
                                 return -1;
                         }
-                        char* ext = get_extension(path);
                         //если пришео GET запрос то возращаем страницу
                         if (strcmp("GET", method) == 0) {
                                 const char* file_path = path;
@@ -169,30 +157,36 @@ int main(void){
                                 if (strlen(file_path) == 0 || file_path[0] == '\0') {
                                         strcat(file_path, "index.html");
                                 }
-
+                                char* ext = get_extension(path);
                                 FILE* file = page_open(file_path);
+                                const char* status_line = "HTTP/1.1 200 OK";
+
                                 if (file == NULL) {
-                                        perror("page_open");
-                                        free(request);
-                                        close(newsockfd);
-                                        return -1;
+                                        status_line = "HTTP/1.1 404 Not Found";
+                                        file = fopen("404.html", "rb"); // Пытаемся открыть страницу ошибки
+                                        if (file == NULL) {
+                                                // Если даже 404.html нет, шлем пустой ответ или текст
+                                                send(newsockfd, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n", 44, 0);
+                                                goto clean; // Переход к очистке ресурсов
+                                        }
                                 }
 
                                 const size_t fsize = file_size(file);
-
-                                char header[256] = {0};
-                                memset(header, 0, sizeof(header));
                                 const char* mime = get_mime_type(ext);
+
+                                char header[512] = {0};
+                                memset(header, 0, sizeof(header));
+
                                 sprintf(header,
-                                        "HTTP/1.1 200 OK\r\n"
+                                        "%s\r\n"
                                         "Content-Type: %s; charset=utf-8\r\n"
                                         "Content-Length: %ld\r\n"
                                         "Connection: close\r\n"
-                                        "\r\n", mime, fsize);
-                                send(newsockfd, header,  strlen(header), 0);
+                                        "\r\n",status_line, mime, fsize);
+                                send(newsockfd, header,  strlen(header), 0);//отвечаем
 
                                 if (send_file(newsockfd, file) == 0) {
-                                        printf("page successfully sent\n");
+                                        printf("page successfully sent\n");//отправили что просили
                                 }else {
                                         perror("send_file");
                                         close(newsockfd);
@@ -202,6 +196,7 @@ int main(void){
                                 }
                                 fclose(file); //закрываем файл
                         }
+                        clean:
                         free(request);
                         shutdown(newsockfd, 2); //закрываем и запрещаем нам стучаться(2)
                         close(newsockfd);//закрываем новое подключение
