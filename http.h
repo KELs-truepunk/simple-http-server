@@ -1,9 +1,16 @@
 //
 // Created by KELs-truepunk on 31.03.2026.
 //
+#include <stdio.h>
+#include <sys/socket.h>
+#include <stdlib.h>
+#include <string.h>
 
-#ifndef SERVER_HTTP_CODES_H
-#define SERVER_HTTP_CODES_H
+#pragma once
+
+char* new_header(char* mime, char* status_line, size_t fsize);
+int send_header(int newsockfd, size_t fsize, char* mime, char* status_line);
+
 struct success_codes {
     char* ok;                       //200
     char* created;                  //201
@@ -80,5 +87,3 @@ static const http_codes HTTP = {
         "HTTP/1.1 504 Gateway Timeout"
     }
 };
-
-#endif //SERVER_HTTP_CODES_H

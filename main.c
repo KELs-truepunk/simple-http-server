@@ -1,135 +1,12 @@
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/wait.h>
-#include <netdb.h>
-#include <unistd.h>
+
 #include <signal.h>
-#include "http_codes.h"
-#include <arpa/inet.h>
+#include "http.h"
+#include "file.h"
+#include "network.h"
+
 
 int err = 0;
-typedef struct addrinfo addrinfo;
-void print_peer_info(int client_fd) {
-        struct sockaddr_in addr;
-        socklen_t addr_len = sizeof(addr);
-
-        // Получаем данные об удаленном узле
-        if (getpeername(client_fd, (struct sockaddr *)&addr, &addr_len) == 0) {
-                char ip_str[INET_ADDRSTRLEN];
-                // Преобразуем IP в читаемый вид и достаем порт
-                inet_ntop(AF_INET, &addr.sin_addr, ip_str, sizeof(ip_str));
-                int port = ntohs(addr.sin_port);
-
-                printf("Подключен клиент: %s:%d\n\n", ip_str, port);
-        } else {
-                perror("Ошибка getpeername\n");
-        }
-}
-char* get_new_request(int sockfd) {
-        char* request = (char*)calloc(4096, sizeof(char));
-        if (request == NULL) {
-                perror("calloc");
-                free(request);
-                return NULL;
-        }
-        int bytes = (int)recv(sockfd, request, 4096 - 1, 0);
-        if (bytes <= 0) {
-                perror("recv");
-                free(request);
-                return NULL;
-        }
-        request[bytes] = '\0';
-        return request;
-}
-char* new_header(char* mime, char* status_line, size_t fsize) {
-        char* header = (char*)calloc(4096, sizeof(char));
-        if (header == NULL) {
-                perror("calloc");
-                return NULL;
-        }
-        sprintf(header,
-                "%s\r\n"
-                "Content-Type: %s; charset=utf-8\r\n"
-                "Content-Length: %ld\r\n"
-                "Connection: close\r\n"
-                "\r\n",status_line, mime, fsize);
-
-        return header;
-}
-int send_header(int newsockfd, size_t fsize, char* mime, char* status_line) {
-        char* header = new_header(mime, status_line, fsize);
-        if (header == NULL) {
-                perror("header error");
-                return -1;
-        }else {
-                const int send_status = (int)send(newsockfd, header,  strlen(header), 0);//отвечаем
-                free(header);
-                return send_status;
-        }
-}
-char* get_mime_type(const char* ext) {
-        if (strcmp(ext, ".html") == 0) return "text/html";
-        if (strcmp(ext, ".js") == 0)   return "application/javascript";
-        if (strcmp(ext, ".css") == 0)  return "text/css";
-        if (strcmp(ext, ".jpg") == 0)  return "image/jpeg";
-        if (strcmp(ext, ".png") == 0)  return "image/png";
-        return "application/octet-stream"; // Тип по умолчанию для бинарных файлов
-}
-
-FILE* page_open(const char* file_path) {
-        return fopen(file_path, "rb");
-}
-char* get_extension(const char* file_path) {
-        char* extension = strrchr(file_path, '.');
-        if (extension == NULL) {
-                extension = strrchr(file_path, '\0');
-        }
-        return extension;
-}
-int send_file(int socketfd, FILE* file) {
-        char* buffer = calloc(4096, sizeof(char));
-        if (buffer == NULL) {
-                perror("calloc");
-                return -1;
-        }
-        size_t bytes_read;
-        while ((bytes_read = fread(buffer, 1, 4096, file)) > 0) {
-                int send_status = (int)send(socketfd, buffer, bytes_read, 0);
-                if (send_status >= 0) continue;
-                else {
-                        free(buffer);
-                        return -1;
-                }
-        }
-        free(buffer);
-        return 0;
-}
-// Очистка зомби-процессов
-void sigchld_handler(int s) {
-        while(waitpid(-1, NULL, WNOHANG) > 0);
-}
-//вычисление размера файла
-size_t file_size(FILE* f) {
-        fseek(f, 0, SEEK_END); //перемещаемся в конец файла
-        size_t sz = ftell(f); // понимаем в какой жопе оказались относительно одного char :-)
-        //переход обратно, тк работаем с указателем (где взял, туда и положил)
-        if (fseek(f, 0, SEEK_SET) != 0) {
-                perror("fseek");//ну всякое бывает
-                return -1;
-        }
-        //здесь раньше было это, но кто-то открыл документацию glib-а - rewind(f)
-        return sz;//возращаем размер файла
-}
-void server_hints(addrinfo* hints) {
-        memset(hints, 0, sizeof(addrinfo));//хыхыхы нолики
-        hints->ai_flags = AI_PASSIVE;//дайте ка мне любой айпи на любом интерфейсе, и пачку сухариков
-        hints->ai_family = AF_UNSPEC;//ну ipv6 круто
-        hints->ai_socktype = SOCK_STREAM;//TCP тк UDP просто не уместно
-}
 
 int main(void){
         addrinfo hints;
@@ -214,7 +91,7 @@ int main(void){
                                         strcat(file_path, "index.html");
                                 }
                                 char* ext = get_extension(path);
-                                FILE* file = page_open(file_path);
+                                FILE* file = file_open(file_path);
                                 char* status_line = HTTP.success.ok;
 
                                 if (file == NULL) {
