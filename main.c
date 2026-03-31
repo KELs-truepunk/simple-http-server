@@ -11,7 +11,11 @@
 
 typedef struct addrinfo addrinfo;
 char* new_header(char* mime, char* status_line, size_t fsize) {
-        char header[512];
+        char* header = (char*)malloc(4096 * sizeof(char));
+        if (header == NULL) {
+                perror("malloc");
+                return NULL;
+        }
         memset(header, 0, strlen(header));
         sprintf(header,
                 "%s\r\n"
@@ -24,14 +28,8 @@ char* new_header(char* mime, char* status_line, size_t fsize) {
 }
 int send_header(int newsockfd, size_t fsize, char* mime, char* status_line) {
         char* header = new_header(mime, status_line, fsize);
-        sprintf(header,
-        "%s\r\n"
-        "Content-Type: %s; charset=utf-8\r\n"
-        "Content-Length: %ld\r\n"
-        "Connection: close\r\n"
-        "\r\n",status_line, mime, fsize);
-
         const int send_status = (int)send(newsockfd, header,  strlen(header), 0);//отвечаем
+        free(header);
         return send_status;
 
 }
@@ -62,7 +60,12 @@ int send_file(int socketfd, FILE* file) {
         }
         size_t bytes_read;
         while ((bytes_read = fread(buffer, 1, 4096, file)) > 0) {
-                send(socketfd, buffer, bytes_read, 0);
+                int send_status = (int)send(socketfd, buffer, bytes_read, 0);
+                if (send_status >= 0) continue;
+                else {
+                        free(buffer);
+                        return -1;
+                }
         }
         free(buffer);
         return 0;
@@ -175,7 +178,7 @@ int main(void){
                         }
                         //если пришео GET запрос то возращаем страницу
                         if (strcmp("GET", method) == 0) {
-                                const char* file_path = path;
+                                char* file_path = path;
                                 if (file_path[0] == '/') {
                                         file_path++;
                                 }
