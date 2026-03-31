@@ -10,7 +10,32 @@
 #include <signal.h>
 
 typedef struct addrinfo addrinfo;
-const char* get_mime_type(const char* ext) {
+char* new_header(char* mime, char* status_line, size_t fsize) {
+        char header[512];
+        memset(header, 0, strlen(header));
+        sprintf(header,
+                "%s\r\n"
+                "Content-Type: %s; charset=utf-8\r\n"
+                "Content-Length: %ld\r\n"
+                "Connection: close\r\n"
+                "\r\n",status_line, mime, fsize);
+
+        return header;
+}
+int send_header(int newsockfd, size_t fsize, char* mime, char* status_line) {
+        char* header = new_header(mime, status_line, fsize);
+        sprintf(header,
+        "%s\r\n"
+        "Content-Type: %s; charset=utf-8\r\n"
+        "Content-Length: %ld\r\n"
+        "Connection: close\r\n"
+        "\r\n",status_line, mime, fsize);
+
+        const int send_status = (int)send(newsockfd, header,  strlen(header), 0);//отвечаем
+        return send_status;
+
+}
+char* get_mime_type(const char* ext) {
         if (strcmp(ext, ".html") == 0) return "text/html";
         if (strcmp(ext, ".js") == 0)   return "application/javascript";
         if (strcmp(ext, ".css") == 0)  return "text/css";
@@ -159,7 +184,7 @@ int main(void){
                                 }
                                 char* ext = get_extension(path);
                                 FILE* file = page_open(file_path);
-                                const char* status_line = "HTTP/1.1 200 OK";
+                                char* status_line = "HTTP/1.1 200 OK";
 
                                 if (file == NULL) {
                                         status_line = "HTTP/1.1 404 Not Found";
@@ -172,18 +197,12 @@ int main(void){
                                 }
 
                                 const size_t fsize = file_size(file);
-                                const char* mime = get_mime_type(ext);
-
-                                char header[512] = {0};
-                                memset(header, 0, sizeof(header));
-
-                                sprintf(header,
-                                        "%s\r\n"
-                                        "Content-Type: %s; charset=utf-8\r\n"
-                                        "Content-Length: %ld\r\n"
-                                        "Connection: close\r\n"
-                                        "\r\n",status_line, mime, fsize);
-                                send(newsockfd, header,  strlen(header), 0);//отвечаем
+                                char* mime = get_mime_type(ext);
+                                if (send_header(newsockfd, fsize, mime, status_line) >= 0) {
+                                        printf("%s\n", status_line);
+                                }else {
+                                        printf("%s\n", status_line);
+                                }
 
                                 if (send_file(newsockfd, file) == 0) {
                                         printf("page successfully sent\n");//отправили что просили
