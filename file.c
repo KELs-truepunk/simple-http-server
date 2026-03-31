@@ -17,30 +17,36 @@ char* get_mime_type(const char* ext) {
     return "application/octet-stream"; // Тип по умолчанию для бинарных файлов
 }
 
-FILE* file_open(const char* file_path) {
-    return fopen(file_path, "rb");
+NEW_FILE* file_open(NEW_FILE* file) {
+    file->file = fopen(file->filepath, "rb");
+    if (file->file == NULL) {
+        perror("fopen");
+        return NULL;
+    }
+    return file;
 }
 //вычисление размера файла
-size_t file_size(FILE* f) {
-    fseek(f, 0, SEEK_END); //перемещаемся в конец файла
-    size_t sz = ftell(f); // понимаем в какой жопе оказались относительно одного char :-)
+size_t file_size(NEW_FILE* file) {
+    fseek(file->file, 0, SEEK_END); //перемещаемся в конец файла
+    size_t sz = ftell(file->file); // понимаем в какой жопе оказались относительно одного char :-)
     //переход обратно, тк работаем с указателем (где взял, туда и положил)
-    if (fseek(f, 0, SEEK_SET) != 0) {
+    if (fseek(file->file, 0, SEEK_SET) != 0) {
         perror("fseek");//ну всякое бывает
         return -1;
     }
     //здесь раньше было это, но кто-то открыл документацию glib-а - rewind(f)
+    file->fsize = sz;
     return sz;//возращаем размер файла
 }
 
-int send_file(int socketfd, FILE* file) {
+int send_file(int socketfd, NEW_FILE* file) {
     char* buffer = calloc(4096, sizeof(char));
     if (buffer == NULL) {
         perror("calloc");
         return -1;
     }
     size_t bytes_read;
-    while ((bytes_read = fread(buffer, 1, 4096, file)) > 0) {
+    while ((bytes_read = fread(buffer, 1, 4096, file->file)) > 0) {
         int send_status = (int)send(socketfd, buffer, bytes_read, 0);
         if (send_status >= 0) continue;
         else {
@@ -50,4 +56,12 @@ int send_file(int socketfd, FILE* file) {
     }
     free(buffer);
     return 0;
+}
+
+int file_close(NEW_FILE* file) {
+    int close_status = fclose(file->file);
+    file->filepath = NULL;
+    file->fsize = 0;
+    file->ext = NULL;
+    return close_status;
 }
