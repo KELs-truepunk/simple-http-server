@@ -8,6 +8,7 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <signal.h>
+#include "http_codes.h"
 
 typedef struct addrinfo addrinfo;
 char* new_header(char* mime, char* status_line, size_t fsize) {
@@ -187,10 +188,10 @@ int main(void){
                                 }
                                 char* ext = get_extension(path);
                                 FILE* file = page_open(file_path);
-                                char* status_line = "HTTP/1.1 200 OK";
+                                char* status_line = HTTP.success.ok;
 
                                 if (file == NULL) {
-                                        status_line = "HTTP/1.1 404 Not Found";
+                                        status_line = HTTP.client_error.not_found;
                                         file = fopen("404.html", "rb"); // Пытаемся открыть страницу ошибки
                                         if (file == NULL) {
                                                 // Если даже 404.html нет, шлем пустой ответ или текст
