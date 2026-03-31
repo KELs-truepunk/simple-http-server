@@ -9,15 +9,48 @@
 #include <unistd.h>
 #include <signal.h>
 #include "http_codes.h"
+#include <arpa/inet.h>
 
+int err = 0;
 typedef struct addrinfo addrinfo;
-char* new_header(char* mime, char* status_line, size_t fsize) {
-        char* header = (char*)malloc(4096 * sizeof(char));
-        if (header == NULL) {
-                perror("malloc");
+void print_peer_info(int client_fd) {
+        struct sockaddr_in addr;
+        socklen_t addr_len = sizeof(addr);
+
+        // Получаем данные об удаленном узле
+        if (getpeername(client_fd, (struct sockaddr *)&addr, &addr_len) == 0) {
+                char ip_str[INET_ADDRSTRLEN];
+                // Преобразуем IP в читаемый вид и достаем порт
+                inet_ntop(AF_INET, &addr.sin_addr, ip_str, sizeof(ip_str));
+                int port = ntohs(addr.sin_port);
+
+                printf("Подключен клиент: %s:%d\n\n", ip_str, port);
+        } else {
+                perror("Ошибка getpeername\n");
+        }
+}
+char* get_new_request(int sockfd) {
+        char* request = (char*)calloc(4096, sizeof(char));
+        if (request == NULL) {
+                perror("calloc");
+                free(request);
                 return NULL;
         }
-        memset(header, 0, strlen(header));
+        int bytes = (int)recv(sockfd, request, 4096 - 1, 0);
+        if (bytes <= 0) {
+                perror("recv");
+                free(request);
+                return NULL;
+        }
+        request[bytes] = '\0';
+        return request;
+}
+char* new_header(char* mime, char* status_line, size_t fsize) {
+        char* header = (char*)calloc(4096, sizeof(char));
+        if (header == NULL) {
+                perror("calloc");
+                return NULL;
+        }
         sprintf(header,
                 "%s\r\n"
                 "Content-Type: %s; charset=utf-8\r\n"
@@ -29,10 +62,14 @@ char* new_header(char* mime, char* status_line, size_t fsize) {
 }
 int send_header(int newsockfd, size_t fsize, char* mime, char* status_line) {
         char* header = new_header(mime, status_line, fsize);
-        const int send_status = (int)send(newsockfd, header,  strlen(header), 0);//отвечаем
-        free(header);
-        return send_status;
-
+        if (header == NULL) {
+                perror("header error");
+                return -1;
+        }else {
+                const int send_status = (int)send(newsockfd, header,  strlen(header), 0);//отвечаем
+                free(header);
+                return send_status;
+        }
 }
 char* get_mime_type(const char* ext) {
         if (strcmp(ext, ".html") == 0) return "text/html";
@@ -54,9 +91,9 @@ char* get_extension(const char* file_path) {
         return extension;
 }
 int send_file(int socketfd, FILE* file) {
-        char* buffer = malloc(4096 * sizeof(char));
+        char* buffer = calloc(4096, sizeof(char));
         if (buffer == NULL) {
-                perror("malloc");
+                perror("calloc");
                 return -1;
         }
         size_t bytes_read;
@@ -96,7 +133,7 @@ void server_hints(addrinfo* hints) {
 
 int main(void){
         addrinfo hints;
-        addrinfo *res, *p;
+        addrinfo *res;
         server_hints(&hints);
 
         int status = getaddrinfo(NULL, "8080", &hints, &res); //res - основа
@@ -140,44 +177,34 @@ int main(void){
                 int newsockfd = accept(sockfd, NULL, NULL);//новое соединение
                 if (newsockfd == -1) {
                         perror("accept"); //если не получилось выходим
-                        return -1;
+                        err = 1;
+                        continue;
                 }
 
                 pid_t pid = fork();
                 if (pid == -1) {
                         perror("fork"); //если не получился новый процесс
-                        return -1;
+                        err = 1;
                 }
                 if (pid == 0) {
+                        err = 0;
+                        print_peer_info(newsockfd);
                         //дочерний процесс обработки подключений
                         close(sockfd);
-                        char* request = (char*)malloc(4096 * sizeof(char));
+                        char* request = get_new_request(newsockfd);
                         if (request == NULL) {
-                                perror("malloc");
-                                free(request);
-                                return -1;
+                                goto clean;
                         }
-                        int bytes = (int)recv(newsockfd, request, 4096 - 1, 0);
-                        if (bytes <= 0) {
-                                perror("recv");
-                                free(request);
-                                close(newsockfd);
-                                return -1;
-                        }
-                        request[bytes] = '\0';
                         char* first_line = strtok(request, "\r\n");
                         if (!first_line) {
-                                free(request);
-                                close(newsockfd);
-                                return -1;
+                                err = 1;
+                                goto clean;
                         }
                         char method[16], path[256];
                         if (sscanf(first_line, "%s %s", method, path) != 2) {
-                                free(request);
-                                close(newsockfd);
-                                return -1;
+                                goto clean;
                         }
-                        //если пришео GET запрос то возращаем страницу
+                        //если пришел GET запрос, то возращаем страницу
                         if (strcmp("GET", method) == 0) {
                                 char* file_path = path;
                                 if (file_path[0] == '/') {
@@ -196,6 +223,7 @@ int main(void){
                                         if (file == NULL) {
                                                 // Если даже 404.html нет, шлем пустой ответ или текст
                                                 send(newsockfd, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n", 44, 0);
+                                                err = 2;
                                                 goto clean; // Переход к очистке ресурсов
                                         }
                                 }
@@ -209,13 +237,10 @@ int main(void){
                                 }
 
                                 if (send_file(newsockfd, file) == 0) {
-                                        printf("page successfully sent\n");//отправили что просили
+                                        printf("page ""%s"" successfully sent\n", file_path);//отправили что просили
                                 }else {
                                         perror("send_file");
-                                        close(newsockfd);
-                                        free(request);
-                                        fclose(file);
-                                        return -1;
+                                        goto clean;
                                 }
                                 fclose(file); //закрываем файл
                         }
@@ -223,7 +248,7 @@ int main(void){
                         free(request);
                         shutdown(newsockfd, 2); //закрываем и запрещаем нам стучаться(2)
                         close(newsockfd);//закрываем новое подключение
-                        exit(0);
+                        exit(err);
                 }else {
                         //родительский процесс только закрывает новые подключения
                         close(newsockfd);
@@ -231,5 +256,4 @@ int main(void){
         }
         close(sockfd); //закрываем всё
         return 0;
-
 }
