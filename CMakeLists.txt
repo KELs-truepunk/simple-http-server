@@ -3,4 +3,4 @@ project(server C)
 
 set(CMAKE_C_STANDARD 11)
 
-add_executable(server main.c file.c http.c http.h file.h network.c network.h)
+add_executable(server main.c file.c http.c http.h file.h network.c network.h methods.c methods.h)

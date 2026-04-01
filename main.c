@@ -4,6 +4,7 @@
 #include "http.h"
 #include "file.h"
 #include "network.h"
+#include "methods.h"
 
 int err = 0;
 
@@ -82,82 +83,19 @@ int main(void){
                         }
                         //если пришел GET запрос, то возращаем страницу
                         if (strcmp("GET", method) == 0) {
-                                NEW_FILE file;
-
-                                file.filepath = path;
-                                if (file.filepath[0] == '/') {
-                                        file.filepath++;
-                                }
-                                if (strlen(file.filepath) == 0 || file.filepath[0] == '\0') {
-                                        strcat(file.filepath, "index.html");
-                                }
-                                char* ext = get_extension(path);
-                                void* file_status = file_open(&file);
-                                char* status_line = HTTP.success.ok;
-
-                                if (file_status == NULL) {
-                                        status_line = HTTP.client_error.not_found;
-                                        file.filepath = "404.html"; // Пытаемся открыть страницу ошибки 404
-                                        file_status = file_open(&file);
-                                        if (file_status == NULL) {
-                                                // Если даже 404.html нет, шлем пустой ответ или текст
-                                                send(newsockfd, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n", 44, 0);
-                                                err = 2;
-                                                file_close(&file);
-                                                goto clean; // Переход к очистке ресурсов
-                                        }
-                                }
-
-                                file_size(&file);
-                                char* mime = get_mime_type(ext);
-
-                                const int head_status = send_header(newsockfd, file.fsize, mime, status_line);
-                                if (head_status >= 0) {
-                                        printf("%s\n", status_line);
-                                }else {
-                                        printf("%s\n", status_line);
-                                }
-
-                                if (send_file(newsockfd, &file) == 0) {
-                                        printf("page ""%s"" successfully sent (%zu bytes)\n", file.filepath, (file.fsize * sizeof(size_t)));//отправили что просили
-                                }else {
-                                        perror("send_file");
-                                        file_close(&file);
+                                int get_status = GET(newsockfd, path);
+                                if (get_status < 0) {
+                                        err = 1;
                                         goto clean;
                                 }
-                                file_close(&file); //закрываем файл
                         }else if (strcmp("HEAD", method) == 0) {
-                                NEW_FILE file;
-
-                                file.filepath = path;
-                                if (file.filepath[0] == '/') {
-                                        file.filepath++;
+                                int head_status = HEAD(newsockfd, path);
+                                if (head_status < 0) {
+                                        err = 1;
+                                        goto clean;
                                 }
-                                if (strlen(file.filepath) == 0 || file.filepath[0] == '\0') {
-                                        strcat(file.filepath, "index.html");
-                                }
-                                char* ext = get_extension(path);
-                                void* file_status = file_open(&file);
-                                char* status_line = HTTP.success.ok;
-
-                                if (file_status == NULL) {
-                                        // Если даже 404.html нет, шлем пустой ответ или текст
-                                        send(newsockfd, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n", 44, 0);
-                                        file_close(&file);
-                                        err = 2;
-                                        goto clean; // Переход к очистке ресурсов
-                                        }
-
-                                file_size(&file);
-                                char* mime = get_mime_type(ext);
-
-                                const int head_status = send_header(newsockfd, file.fsize, mime, status_line);
-                                if (head_status >= 0) {
-                                        printf("%s\n", status_line);
-                                }else {
-                                        printf("%s\n", status_line);
-                                }
-                                file_close(&file);
+                        } else if (strcmp("POST", method) == 0) {
+                                POST(newsockfd, path);
                         }
                         clean:
                         free(request);
