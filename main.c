@@ -72,13 +72,8 @@ int main(void){
                         if (request == NULL) {
                                 goto clean;
                         }
-                        char* first_line = strtok(request, "\r\n");
-                        if (!first_line) {
-                                err = 1;
-                                goto clean;
-                        }
                         char method[16], path[256];
-                        if (sscanf(first_line, "%15s %255s", method, path) != 2) {
+                        if (sscanf(request, "%15s %255s", method, path) != 2) {
                                 goto clean;
                         }
                         //если пришел GET запрос, то возращаем страницу
@@ -95,7 +90,7 @@ int main(void){
                                         goto clean;
                                 }
                         } else if (strcmp("POST", method) == 0) {
-                                POST(newsockfd, path);
+                                POST(newsockfd, request);
                         }
                         clean:
                         free(request);

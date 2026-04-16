@@ -4,4 +4,4 @@
 #pragma once
 int GET(int newsockfd, char* path);
 int HEAD(int newsockfd, char* path);
-int POST(int newsockfd, char* path);
+int POST(int newsockfd, char* request);

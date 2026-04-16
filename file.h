@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <string.h>
+
 typedef struct  {
     FILE* file;
     size_t fsize;

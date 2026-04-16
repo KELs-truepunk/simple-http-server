@@ -21,7 +21,7 @@ int GET( int newsockfd, char* path) {
 
     if (file_status == NULL) {
         status_line = HTTP.client_error.not_found;
-        file.filepath = "404.html"; // Пытаемся открыть страницу ошибки 404
+        file.filepath = "err_pages/404.html"; // Пытаемся открыть страницу ошибки 404
         file_status = file_open(&file);
         if (file_status == NULL) {
             // Если даже 404.html нет, шлем пустой ответ или текст
@@ -69,7 +69,7 @@ int HEAD(int newsockfd, char* path) {
 
     if (file_status == NULL) {
         status_line = HTTP.client_error.not_found;
-        file.filepath = "404.html"; // Пытаемся открыть страницу ошибки 404
+        file.filepath = "err_pages/404.html"; // Пытаемся открыть страницу ошибки 404
         file_status = file_open(&file);
         if (file_status == NULL) {
             // Если даже 404.html нет, шлем пустой ответ или текст
@@ -92,6 +92,16 @@ int HEAD(int newsockfd, char* path) {
     file_close(&file);
 }
 
-int POST(int newsockfd, char* path) {
-    printf("METHOD POST\n");
+int POST(int newsockfd, char* request) {
+    char *body = strstr(request, "\r\n\r\n");
+    if (body) {
+        body += 4; // Пропускаем \r\n\r\n
+        printf("new POST: %s\n", body);
+    }
+
+    // Обязательно отвечаем клиенту, иначе он будет ждать вечно
+    char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    send(newsockfd, resp, strlen(resp), 0);
+
+    return 0;
 }
