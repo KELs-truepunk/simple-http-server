@@ -4,6 +4,10 @@ typedef enum {
     ROUTE_TEST_ECHO       //  тестовый кейс
 } post_route_t;
 
+typedef struct {
+    const char *path;
+    post_route_t route;
+} route_entry_t;
 // Функция, которая превращает строку пути в число для switch
 post_route_t get_post_route(const char* path);
 
