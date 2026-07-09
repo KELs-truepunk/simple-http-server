@@ -14,7 +14,7 @@ int GET( int newsockfd, char* path) {
         file.filepath++;
     }
     if (strlen(file.filepath) == 0 || file.filepath[0] == '\0') {
-        strcat(file.filepath, "index.html");
+        strcat(file.filepath, "public/index.html");
     }
     const char* ext = get_extension(path);
     void* file_status = file_open(&file);
@@ -22,7 +22,7 @@ int GET( int newsockfd, char* path) {
 
     if (file_status == NULL) {
         status_line = HTTP.client_error.not_found;
-        file.filepath = "err_pages/404.html"; // Пытаемся открыть страницу ошибки 404
+        file.filepath = "public/err_pages/404.html"; // Пытаемся открыть страницу ошибки 404
         file_status = file_open(&file);
         if (file_status == NULL) {
             // Если даже 404.html нет, шлем пустой ответ или текст
@@ -62,7 +62,7 @@ int HEAD(int newsockfd, char* path) {
         file.filepath++;
     }
     if (strlen(file.filepath) == 0 || file.filepath[0] == '\0') {
-        strcat(file.filepath, "index.html");
+        strcat(file.filepath, "public/index.html");
     }
     const char* ext = get_extension(path);
     void* file_status = file_open(&file);
@@ -70,7 +70,7 @@ int HEAD(int newsockfd, char* path) {
 
     if (file_status == NULL) {
         status_line = HTTP.client_error.not_found;
-        file.filepath = "err_pages/404.html"; // Пытаемся открыть страницу ошибки 404
+        file.filepath = "public/err_pages/404.html"; // Пытаемся открыть страницу ошибки 404
         file_status = file_open(&file);
         if (file_status == NULL) {
             // Если даже 404.html нет, шлем пустой ответ или текст

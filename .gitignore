@@ -5,3 +5,4 @@
 /server
 /build/
 *.log
+/public
