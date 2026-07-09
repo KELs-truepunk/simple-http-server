@@ -90,7 +90,7 @@ int main(void){
                                         goto clean;
                                 }
                         } else if (strcmp("POST", method) == 0) {
-                                POST(newsockfd, request);
+                                POST(newsockfd, request, path);
                         }
                         clean:
                         free(request);
