@@ -46,7 +46,7 @@ int main(void){
         sigemptyset(&sa.sa_mask);
         sa.sa_flags = SA_RESTART;
         sigaction(SIGCHLD, &sa, NULL);
-
+        signal(SIGPIPE, SIG_IGN);
         puts("Server is running on port 8080...");
 
         while (1) {
