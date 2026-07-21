@@ -62,6 +62,7 @@ int main(void){
                 if (pid == -1) {
                         perror("fork"); //если не получился новый процесс
                         err = 1;
+                        close(newsockfd);
                 }
                 if (pid == 0) {
                         err = 0;
